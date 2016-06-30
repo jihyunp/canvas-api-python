@@ -141,3 +141,7 @@ class CanvasReader(object):
 
     def get_assignment_analytics(self, course_id):
         return self.api.get('/courses/%s/analytics/assignments' % course_id)
+
+
+    def get_quizzes(self, course_id):
+        return self.api.get('/courses/%s/quizzes' % course_id)
