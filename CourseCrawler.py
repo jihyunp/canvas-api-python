@@ -33,9 +33,11 @@ class CourseCrawler(object):
         course_info = self.canvas.get_course_info(self.course_id)
         self.course_name = course_info['name']
 
+
     def run(self):
         user_id_dict = self._create_user_file()
         self._create_gradebook(user_id_dict)
+        self._create_deadline_files()
         self._create_discussions_file(user_id_dict)
         self._create_course_analytics()
         self._create_user_analytics(user_id_dict)
@@ -353,10 +355,46 @@ class CourseCrawler(object):
         save_bars(plot_name, plot_data, names, xlabel='Number of Days Since Start of Course')
 
 
+    def _create_deadline_files(self):
+        """
+
+        :return:
+        """
+
+        # First get the assignment deadlines
+        assignments = self.canvas.get_assignments(self.course_id)
+        assignment_due_dates = {}
+
+        for assignment in assignments:
+            quiz_title = assignment['name']
+            due_at = assignment['due_at']
+            assignment_due_dates[quiz_title] = due_at
+
+        save_pickle('./data/%s/assignments_due_dates.pkl' % self.course_name, assignment_due_dates)
+        with open('./data/%s/assignments_due_dates.csv' % self.course_name, 'w') as f:
+            wr = csv.writer(f)
+            wr.writerows(assignment_due_dates.items())
+
+        # Get the quiz deadlines
+        quizzes = self.canvas.get_quizzes(self.course_id)
+        quizzes_due_dates = {}
+
+        for quiz in quizzes:
+            quiz_title= quiz['title']
+            due_at= quiz['due_at']
+            quizzes_due_dates[quiz_title] = due_at
+
+        save_pickle('./data/%s/quizzes_due_dates.pkl' % self.course_name, quizzes_due_dates)
+        with open('./data/%s/quizzes_due_dates.csv' % self.course_name, 'w') as f:
+            wr = csv.writer(f)
+            wr.writerows(quizzes_due_dates.items())
+
+
+
+
 if __name__ == '__main__':
     crawler = CourseCrawler()
     crawler.run()
-
 
 
 
