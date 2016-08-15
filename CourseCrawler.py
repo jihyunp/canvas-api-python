@@ -357,44 +357,77 @@ class CourseCrawler(object):
 
     def _create_deadline_files(self):
         """
-
+        Creates a file that has deadlines and the maximum points available for
+        each of the assignment and quiz.
+        Creates four files in total: one pickle file and csv file for assignments,
+        and the same for quizzes.
         :return:
         """
 
         # First get the assignment deadlines
         assignments = self.canvas.get_assignments(self.course_id)
-        assignment_due_dates = {}
+        assgnmnt_duedates_with_pnts = {}
 
         for assignment in assignments:
             quiz_title = assignment['name']
             due_at = assignment['due_at']
-            assignment_due_dates[quiz_title] = due_at
+            points = assignment['points_possible']
+            assgnmnt_duedates_with_pnts[quiz_title] = [due_at, points]
 
-        save_pickle('./data/%s/assignments_due_dates.pkl' % self.course_name, assignment_due_dates)
-        with open('./data/%s/assignments_due_dates.csv' % self.course_name, 'w') as f:
+        save_pickle('./data/%s/assignments_duedates_and_points.pkl' % self.course_name, assgnmnt_duedates_with_pnts)
+
+        array_for_csv = [[k, v[0], v[1]] for k, v in zip(assgnmnt_duedates_with_pnts.keys(), assgnmnt_duedates_with_pnts.values())]
+        with open('./data/%s/assignments_duedates_and_points.csv' % self.course_name, 'w') as f:
             wr = csv.writer(f)
-            wr.writerows(assignment_due_dates.items())
+            wr.writerows(array_for_csv)
 
         # Get the quiz deadlines
         quizzes = self.canvas.get_quizzes(self.course_id)
-        quizzes_due_dates = {}
+        quiz_duedates_with_pnts = {}
 
         for quiz in quizzes:
             quiz_title= quiz['title']
             due_at= quiz['due_at']
-            quizzes_due_dates[quiz_title] = due_at
+            points = quiz['points_possible']
+            quiz_duedates_with_pnts[quiz_title] = [due_at, points]
 
-        save_pickle('./data/%s/quizzes_due_dates.pkl' % self.course_name, quizzes_due_dates)
-        with open('./data/%s/quizzes_due_dates.csv' % self.course_name, 'w') as f:
+        save_pickle('./data/%s/quizzes_duedates_and_points.pkl' % self.course_name, quiz_duedates_with_pnts)
+
+        array_for_csv = [[k, v[0], v[1]] for k, v in zip(quiz_duedates_with_pnts.keys(), quiz_duedates_with_pnts.values())]
+        with open('./data/%s/quizzes_duedates_and_points.csv' % self.course_name, 'w') as f:
             wr = csv.writer(f)
-            wr.writerows(quizzes_due_dates.items())
+            wr.writerows(array_for_csv)
 
+
+    def _get_grade_release_dates(self):
+        """
+        Saves a dictionary of grade submission dates into a pickle file,
+        where the keys are the name of the assignments and the values are the lists
+        of submission dates of the assignment.
+        :return:
+        """
+        print('_get_grade_release_dates(): This will take a while ..')
+
+        date_format = "%Y-%m-%dT%H:%M:%SZ"
+        submissions = self.canvas.get_gradebook_history(self.course_id)
+        grade_submission_dates = {}
+        for sub in submissions:
+            name = sub['assignment_name']
+            if name not in grade_submission_dates:
+                grade_submission_dates[name] = []
+            if sub['graded_at'] is not None:
+                graded_at = datetime.strptime(sub['graded_at'], date_format)
+                grade_submission_dates[name].append(graded_at)
+
+        save_pickle('./data/%s/grade_submission_dates.pkl' % self.course_name, grade_submission_dates)
 
 
 
 if __name__ == '__main__':
     crawler = CourseCrawler()
-    crawler.run()
+    # crawler._create_deadline_files()
+    crawler._get_grade_release_dates()
+    # crawler.run()
 
 
 

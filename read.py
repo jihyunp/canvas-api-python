@@ -144,4 +144,18 @@ class CanvasReader(object):
 
 
     def get_quizzes(self, course_id):
+        """
+        Returns a list of Quizzes in the course.
+        :param course_id: string
+        :return:
+        """
         return self.api.get('/courses/%s/quizzes' % course_id)
+
+
+    def get_gradebook_history(self, course_id):
+        """
+        Returns a list of 'SubmissionVersions' in the course with course_id.
+        :param course_id:
+        :return:
+        """
+        return self.api.get('/courses/%s/gradebook_history/feed' % course_id)
