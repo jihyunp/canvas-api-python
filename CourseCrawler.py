@@ -41,6 +41,8 @@ class CourseCrawler(object):
         self._create_discussions_file(user_id_dict)
         self._create_course_analytics()
         self._create_user_analytics(user_id_dict)
+        self._get_grade_release_dates()
+        self._get_files()
 
 
     def _create_user_file(self):
@@ -418,16 +420,18 @@ class CourseCrawler(object):
             if sub['graded_at'] is not None:
                 graded_at = datetime.strptime(sub['graded_at'], date_format)
                 grade_submission_dates[name].append(graded_at)
-
         save_pickle('./data/%s/grade_submission_dates.pkl' % self.course_name, grade_submission_dates)
 
+
+    def _get_files(self):
+        print('_get_file_idx(): downloading maps from file_name to file_ids and vice versa')
+        files = self.canvas.get_files(self.course_id)
+        save_pickle('./data/%s/files.pkl' % self.course_name, files)
 
 
 if __name__ == '__main__':
     crawler = CourseCrawler()
-    # crawler._create_deadline_files()
-    crawler._get_grade_release_dates()
-    # crawler.run()
+    crawler.run()
 
 
 

@@ -159,3 +159,12 @@ class CanvasReader(object):
         :return:
         """
         return self.api.get('/courses/%s/gradebook_history/feed' % course_id)
+
+
+    def get_files(self, course_id):
+        """
+        Returns a list of 'Files' in the course with 'course_id'
+        :param course_id:
+        :return:
+        """
+        return self.api.get('/courses/%s/files' % course_id)
