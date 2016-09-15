@@ -28,6 +28,7 @@ class CourseCrawler(object):
         oauth_token = info['token']
         base_url = info['canvas_instance_url']
         api_prefix = info['api_prefix']
+        self.mapping_file = info['mapping_file']
         self.canvas = CanvasReader(oauth_token, base_url, api_prefix, verbose=print_urls)
         self.course_id = info['course_id']
         course_info = self.canvas.get_course_info(self.course_id)
@@ -35,6 +36,7 @@ class CourseCrawler(object):
 
 
     def run(self):
+        self._load_user_mapping()
         user_id_dict = self._create_user_file()
         self._create_gradebook(user_id_dict)
         self._create_deadline_files()
@@ -43,6 +45,25 @@ class CourseCrawler(object):
         self._create_user_analytics(user_id_dict)
         self._get_grade_release_dates()
         self._get_files()
+
+
+    def _load_user_mapping(self):
+        # Check the file type
+        if not self.mapping_file.endswith('.csv'):
+            print('[ERROR]: Mapping file should be a csv file')
+            exit()
+
+        self.cid2rid = {}
+        if os.path.exists(self.mapping_file):
+            print('\nLoading mapping file "' + self.mapping_file + '"')
+            with open(self.mapping_file, 'r') as f:
+                reader = csv.reader(f, delimiter=',')
+                for row in reader:
+                    if row[0] == 'roster_randomid':
+                        continue
+                    rid = int(row[0])
+                    cid = int(row[1])
+                    self.cid2rid[cid] = rid
 
 
     def _create_user_file(self):
@@ -59,19 +80,21 @@ class CourseCrawler(object):
         if file_exists(filename) and file_exists(projector_filename):
             return load_pickle(projector_filename)
 
-        id = 1
-        projector = {}  # project dict for anonymous id's
+        projector = {}  # project dict for anonymous id's (only includes the users appeared on this course)
         user_list = []
 
         users = self.canvas.get_users(self.course_id)
-        random.shuffle(users)  # de-identify users
 
         for u in users:
-            user_list.append([u['name'], u['sortable_name'], u['id'], id])
-            projector[u['id']] = id
-            id += 1
+            cid = u['id']
+            if cid in self.cid2rid.keys():
+                rid = self.cid2rid[cid]
+                user_list.append([u['name'], u['sortable_name'], cid, rid])
+                projector[cid] = rid
+            else:
+                print('Skipping user '+ str(cid) +' '+ u['name']+'. Random ID not found.')
 
-        user_list.insert(0, ['Name', 'Sortable Name', 'Canvas ID', 'Anonymised ID'])  # add titles to csv
+        user_list.insert(0, ['Name', 'Sortable Name', 'Canvas ID', 'Random Roster ID (anonymized)'])  # add titles to csv
         save_csv(filename, user_list)
         save_pickle(projector_filename, projector)
         return projector
@@ -98,13 +121,17 @@ class CourseCrawler(object):
         names.insert(0, 'Student ID')
         max_scores.insert(0, '(Out of possible points)')
 
+        rid2idx = {rid: (idx+1) for idx, rid in enumerate(user_ids.values())}
+        idx2rid = {idx: rid for rid, idx in rid2idx.items()}
         gradebook = np.zeros((len(user_ids), len(assignments) + 1))  # first column is student ID
 
-        gradebook[:, 0] = np.array(range(1, len(user_ids.keys()) + 1))  # student id column
+        # gradebook[:, 0] = np.array(range(1, len(user_ids.keys()) + 1))  # student id column
+        gradebook[:, 0] = np.array([idx2rid[idx] for idx in range(1, len(user_ids.keys()) + 1)])  # student id column
 
         user_group_scores = {}  # a dictionary of dictionaries (for each user, for each assigment group)
         for u in user_ids.values():  # used to compute total grade (weighted)
-            user_group_scores[u] = {}
+            idx = rid2idx[u]
+            user_group_scores[idx] = {}
 
         column = 1  # fill in the columns (assignments one by one)
         for assignment in assignments:
@@ -113,15 +140,17 @@ class CourseCrawler(object):
             group_id = assignment['assignment_group_id']
 
             for s in submissions:
-                user_id = user_ids[s['user_id']]
-                row = user_id - 1  # -1 because user_id is 1 based
+                random_id = user_ids[s['user_id']]  # random ID
+                idx = rid2idx[random_id]
+                row = idx - 1
+                # row = random_id - 1  # -1 because user_id is 1 based
                 gradebook[row, column] = s['grade']
 
                 if s['grade'] is not None:
-                    (received, total) = user_group_scores[user_id].get(group_id, (0, 0))
+                    (received, total) = user_group_scores[idx].get(group_id, (0, 0))
                     received += float(s['grade'])
                     total += float(max_scores[column])
-                    user_group_scores[user_id][group_id] = (received, total)
+                    user_group_scores[idx][group_id] = (received, total)
 
             column += 1
 
@@ -135,17 +164,21 @@ class CourseCrawler(object):
             max_scores.append(total)
             total_score += float(total)
 
-            for user_id in user_ids.values():
-                received, total = user_group_scores[user_id].get(group['id'], (0, 0))
+            for random_id in user_ids.values():
+                idx = rid2idx[random_id]
+                received, total = user_group_scores[idx].get(group['id'], (0, 0))
+                row = idx-1
                 if total != 0:
-                    group_scores[user_id - 1, i] = received / total * 100
+                    group_scores[row, i] = received / total * 100
                 else:
-                    group_scores[user_id - 1, i] = -1
+                    group_scores[row, i] = -1
             i += 1
         names.append('Total')
 
         gradebook = np.concatenate((gradebook, group_scores), axis=1)
         gradebook = gradebook.tolist()
+        for rown in range(len(gradebook)):
+            gradebook[rown][0] = int(gradebook[rown][0])
         gradebook.insert(0, max_scores)  # add max scores
         gradebook.insert(0, names)  # add titles
         save_pickle('./data/%s/gradebook.pkl' % self.course_name, gradebook)
@@ -217,10 +250,16 @@ class CourseCrawler(object):
 
         for topic in topics:
             thread = dict()
+            cid = topic['author']['id']
+            random_id= user_projector.get(cid, -1)
+            if random_id == -1:
+                print('Skipping discussion thread that was written by canvas ID: '+str(cid)+'. Random ID not found.')
+                continue
+
             thread['title'] = self._clean_text(topic['title'])  # each topic has a title
             thread['text'] = self._clean_text(topic['message'])  # some text
             thread['posted_at'] = topic['posted_at']  # a timestamp
-            thread['user'] = user_projector[topic['author']['id']]  # and an author
+            thread['user'] = user_projector[cid]  # and an author
             thread['replies'] = []
 
             full_topic = self.canvas.get_discussion_topic(self.course_id, topic['id'])
@@ -306,11 +345,11 @@ class CourseCrawler(object):
 
         tmp = user_analytics[0]
         for ua in user_analytics:
-            user_id = user_projector.get(ua['id'], -1)
-            if user_id == -1:
+            random_id= user_projector.get(ua['id'], -1)
+            if random_id == -1:
                 continue
             user_info = list()
-            user_info.append(user_id)
+            user_info.append(random_id)
             user_info.append(ua['page_views'])
             user_info.append(ua['participations'])
             user_info.append(ua['tardiness_breakdown']['floating'])
@@ -431,7 +470,10 @@ class CourseCrawler(object):
 
 if __name__ == '__main__':
     crawler = CourseCrawler()
-    crawler.run()
+    crawler._load_user_mapping()
+    user_id_dict = crawler._create_user_file()
+    crawler._create_gradebook(user_id_dict)
+    # crawler.run()
 
 
 
