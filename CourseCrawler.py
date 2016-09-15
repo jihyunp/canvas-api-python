@@ -470,10 +470,7 @@ class CourseCrawler(object):
 
 if __name__ == '__main__':
     crawler = CourseCrawler()
-    crawler._load_user_mapping()
-    user_id_dict = crawler._create_user_file()
-    crawler._create_gradebook(user_id_dict)
-    # crawler.run()
+    crawler.run()
 
 
 
